@@ -21,7 +21,7 @@
 <section class="project">
   <header>
     <span class="dot {{ 'red' if proj.report_count >= 3 else 'green' }}"></span>
-    <span class="title">{{ proj.paper.title or proj.paper.id }}</span>
+    <span class="title"><a href="{{ url_for('paper_detail', paper_id=proj.paper.id) }}">{{ proj.paper.title or proj.paper.id }}</a></span>
     <span class="stat">{{ proj.paper.status }}</span>
     {% if proj.paper.paused %}<span class="stat">⏸ paused</span>{% endif %}
     <span class="count">{{ proj.report_count }} report(s)</span>

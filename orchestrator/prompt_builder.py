@@ -1,16 +1,17 @@
 """Prompt assembly + LLM invocation. See DESIGN.md §4.2.
 
-In P0 most pieces are stubs — the dummy agent doesn't actually call the LLM.
-This module establishes the shape so later phases can fill in role prompts,
-persona memory, and real Claude calls.
+In P1 the assembler is real — base prompt + honesty + scoped principles +
+persona memory + paper context + task instructions — and we ship a
+role-aware mock LLM so the loop produces compilable output without an API
+key. Flip `USE_MOCK_LLM=0` and set `ANTHROPIC_API_KEY` to use real Claude.
 """
 from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from .config import CONFIG, ROOT
@@ -20,8 +21,6 @@ log = logging.getLogger(__name__)
 
 PROMPTS_DIR = ROOT / "prompts"
 
-
-# ---------- Static-text loaders -------------------------------------------
 
 def _read(rel: str) -> str:
     p = PROMPTS_DIR / rel
@@ -46,14 +45,8 @@ def critic_pushback() -> str:
     return _read("snippets/critic_pushback.md")
 
 
-# ---------- Dynamic context -----------------------------------------------
-
 def applicable_principles(role: str, paper_id: str | None) -> str:
-    """Return concatenated principle text, lab → role → project order.
-
-    Implemented locally (not via lab.principles) to keep the prompt builder
-    importable from agent threads without circular deps.
-    """
+    """Return concatenated principle text, lab → role → project order."""
     from . import state  # local import to dodge circular reference at boot
 
     scopes = ["lab", f"role:{role}"]
@@ -88,21 +81,26 @@ def persona_memory(role: str, name: str | None) -> str:
 
 
 def paper_context(paper_id: str | None, role: str, task: dict[str, Any]) -> str:
-    """Compact paper-state summary. Aim for ≤ 2K tokens.
-
-    P0 just stuffs `state.json` and the task object in. Refined renderers come
-    in P1+.
-    """
+    """Compact paper-state summary. Aim for ≤ 2K tokens."""
     if not paper_id:
         return ""
-    state_json = CONFIG.papers_dir / paper_id / "state.json"
-    paper_state: dict[str, Any] = {}
-    if state_json.exists():
-        try:
-            paper_state = json.loads(state_json.read_text())
-        except json.JSONDecodeError:
-            paper_state = {"_corrupted": True}
-    return "# Paper context\n```json\n" + json.dumps(paper_state, indent=2) + "\n```"
+    from . import paper_state
+    data = paper_state.read(paper_id)
+    # Trim — we don't need the full decisions log every time.
+    trimmed = {
+        "paper_id": data.get("paper_id"),
+        "title": data.get("title"),
+        "status": data.get("status"),
+        "target_venue": data.get("target_venue"),
+        "seed_problem": data.get("seed_problem"),
+        "abstract": data.get("abstract"),
+        "formal_problem": data.get("formal_problem"),
+        "structure": data.get("structure"),
+        "claims": data.get("claims"),
+        "sims": data.get("sims"),
+        "recent_decisions": (data.get("decisions_log") or [])[-3:],
+    }
+    return "# Paper context\n```json\n" + json.dumps(trimmed, indent=2) + "\n```"
 
 
 @dataclass
@@ -126,7 +124,7 @@ def assemble(role: str, persona_name: str | None, paper_id: str | None, task: di
     template = task_template(role) or "Task: {task_json}"
     user = template.replace("{task_json}", json.dumps(task, indent=2))
     for k, v in task.items():
-        user = user.replace("{" + k + "}", str(v))
+        user = user.replace("{" + k + "}", str(v) if v is not None else "")
     return AssembledPrompt(system=system, user=user)
 
 
@@ -142,7 +140,7 @@ class LLMResponse:
     model: str
 
 
-# Pricing per million tokens (rough, used only for budget telemetry).
+# Pricing per million tokens (rough, for budget telemetry).
 _PRICES = {
     "claude-haiku-4-5-20251001": (0.80, 4.00),
     "claude-sonnet-4-6": (3.00, 15.00),
@@ -157,13 +155,14 @@ def call_llm(
     persona_name: str | None,
     model: str,
     prompt: AssembledPrompt,
-    max_tokens: int = 20000,
+    max_tokens: int = 8000,
+    task: dict[str, Any] | None = None,
 ) -> LLMResponse:
     """Invoke Claude (or the mock) and log spend."""
     start = time.monotonic()
 
     if CONFIG.use_mock_llm or not CONFIG.anthropic_api_key:
-        text = _mock_response(role, prompt)
+        text = mock_response(role, prompt, task or {})
         in_tok = max(1, len(prompt.system) + len(prompt.user)) // 4
         out_tok = max(1, len(text)) // 4
         used_model = "mock"
@@ -189,14 +188,156 @@ def call_llm(
     return LLMResponse(text, in_tok, out_tok, cost, latency_ms, used_model)
 
 
-def _mock_response(role: str, prompt: AssembledPrompt) -> str:
-    """Stand-in LLM. Returns a JSON-shaped Report so agents can round-trip the schema."""
+def call_llm_json(
+    role: str,
+    paper_id: str | None,
+    persona_name: str | None,
+    model: str,
+    prompt: AssembledPrompt,
+    max_tokens: int = 8000,
+    task: dict[str, Any] | None = None,
+) -> tuple[dict[str, Any], LLMResponse]:
+    """Call the LLM and parse a JSON object from its response.
+
+    Tolerates fenced code blocks and surrounding prose. Raises ValueError if
+    no JSON object can be extracted.
+    """
+    resp = call_llm(role, paper_id, persona_name, model, prompt, max_tokens, task=task)
+    return _extract_json(resp.text), resp
+
+
+def _extract_json(text: str) -> dict[str, Any]:
+    fence = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.S)
+    if fence:
+        return json.loads(fence.group(1))
+    # Find the outermost balanced { ... } in the text.
+    start = text.find("{")
+    if start < 0:
+        raise ValueError("no JSON object in response")
+    depth = 0
+    in_str = False
+    esc = False
+    for i in range(start, len(text)):
+        c = text[i]
+        if esc:
+            esc = False
+            continue
+        if c == "\\":
+            esc = True
+            continue
+        if c == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if c == "{":
+            depth += 1
+        elif c == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start:i + 1])
+    raise ValueError("unbalanced JSON in response")
+
+
+# ---------- Mock LLM ------------------------------------------------------
+
+def mock_response(role: str, prompt: AssembledPrompt, task: dict[str, Any]) -> str:
+    """Role-aware canned outputs. Just realistic enough that the pipeline
+    produces compileable LaTeX and a coherent state.json."""
+    if role == "problem_smith":
+        return _mock_problem_smith(task)
+    if role == "structurer":
+        return _mock_structurer(task)
+    if role == "writer":
+        return _mock_writer(task)
+    if role == "polisher":
+        return _mock_polisher(task)
     return json.dumps({
         "kind": "fyi",
-        "role": role,
-        "summary": f"[mock] {role} ran with {len(prompt.user)} chars of task",
+        "summary": f"[mock] {role} ran",
         "severity": "green",
-        "self_diagnosis": "mock LLM — no real reasoning",
+        "self_diagnosis": "mock LLM",
         "confidence": "low",
         "made_up_flag": False,
     })
+
+
+def _mock_problem_smith(task: dict[str, Any]) -> str:
+    seed = (task.get("seed_problem") or "an open question in the area").strip()
+    title = task.get("title") or "Investigations"
+    return json.dumps({
+        "title": title,
+        "abstract": (
+            f"We study {seed.lower()}. We formalize the setting, present a model "
+            "that captures the salient frictions, and derive structural results "
+            "that connect classical limits to noisy regimes. Simulations on a "
+            "synthetic instance illustrate the qualitative predictions."
+        ),
+        "formal_problem": (
+            f"Setting. Let X be a finite set of agents and S the set of states. "
+            f"Given the seed concern --- {seed} --- we study the family of "
+            "policies that map observed signals to actions and characterize "
+            "their welfare under varying noise."
+        ),
+        "claims": [
+            {"id": "thm1", "text": "Under symmetric noise, the canonical policy is welfare-optimal."},
+            {"id": "lem1", "text": "Welfare is monotone non-increasing in signal noise."},
+        ],
+    })
+
+
+def _mock_structurer(task: dict[str, Any]) -> str:
+    return json.dumps({
+        "sections": [
+            {"id": "intro",       "title": "Introduction"},
+            {"id": "related",     "title": "Related Work"},
+            {"id": "model",       "title": "Model"},
+            {"id": "theory",      "title": "Main Results"},
+            {"id": "discussion",  "title": "Discussion"},
+        ],
+    })
+
+
+def _mock_writer(task: dict[str, Any]) -> str:
+    sid = task.get("section_id") or "section"
+    title = task.get("title") or sid.title()
+    body = {
+        "intro": (
+            "Recent interest in the area has produced a patchwork of partial "
+            "results. We provide a unifying frame, prove the canonical case, "
+            "and discuss extensions. The contribution is threefold: a clean "
+            "model, a structural theorem, and a simulation that situates the "
+            "predictions empirically."
+        ),
+        "related": (
+            "Three lines of work bear on our question. The first studies "
+            "deterministic versions; the second introduces noise but assumes "
+            "full observability; the third looks at observability but in "
+            "different welfare formalisms. None addresses the joint setting."
+        ),
+        "model": (
+            "We model the system as a tuple $(X, S, \\sigma, u)$ where $X$ is "
+            "the agent set, $S$ the state space, $\\sigma$ a noisy signal "
+            "function, and $u$ the welfare functional. Throughout we assume "
+            "$\\sigma$ has bounded support and $u$ is Lipschitz."
+        ),
+        "theory": (
+            "Our main result is Theorem~\\ref{thm:welfare}: under symmetric "
+            "noise, the canonical policy attains the welfare optimum. The "
+            "proof proceeds by perturbation around the noiseless limit and "
+            "exploits Lipschitz continuity of $u$."
+        ),
+        "discussion": (
+            "We have characterized welfare in a clean noisy-signal setting. "
+            "The main open questions concern asymmetric noise, where the "
+            "perturbation argument breaks, and the effect of correlated "
+            "signals across agents. We sketch both directions briefly."
+        ),
+    }.get(sid, "Body to be drafted.")
+    return json.dumps({"latex": f"\\section{{{title}}}\\label{{sec:{sid}}}\n\n{body}\n"})
+
+
+def _mock_polisher(task: dict[str, Any]) -> str:
+    # The mock Polisher is never actually invoked — Polisher.execute() takes
+    # the mock-mode shortcut and prepends a marker to the existing file.
+    return json.dumps({"latex": task.get("current_latex") or ""})

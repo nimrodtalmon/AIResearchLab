@@ -8,9 +8,9 @@ from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Any
 
-from orchestrator import state
+from orchestrator import paper_state, prompt_builder, state
 from orchestrator.config import CONFIG
-from orchestrator.workspace import transaction, GateFailure, MutexTimeout
+from orchestrator.workspace import GateFailure, MutexTimeout, transaction
 
 log = logging.getLogger(__name__)
 
@@ -29,16 +29,14 @@ class Report:
     persona_name: str | None = None
     work_type: str | None = None
     self_diagnosis: str = ""
-    confidence: str = "medium"   # low | medium | high
+    confidence: str = "medium"
     made_up_flag: bool = False
     transcript_ref: str | None = None
 
-    # decision_needed-specific
     decision_question: str | None = None
     artifact: str | None = None
     options: list[dict[str, str]] = field(default_factory=list)
 
-    # stuck_no_question-specific
     what_was_tried: str | None = None
     what_blocks_me: str | None = None
 
@@ -58,25 +56,18 @@ class Agent(ABC):
     role: str = ""
     default_model: str = "claude-sonnet-4-6"
     work_type: str | None = None
+    max_tokens: int = 4000
 
     def __init__(self, persona_name: str | None = None) -> None:
         self.persona_name = persona_name
 
-    # ---------- Implemented by subclasses ---------------------------------
-
     @abstractmethod
     def execute(self, task: dict[str, Any], workspace_path: Path | None) -> Report:
-        """Do the actual work and produce a Report."""
+        ...
 
     # ---------- Driver ----------------------------------------------------
 
     def run(self, task: dict[str, Any]) -> str | None:
-        """Top-level entry point invoked by the dispatcher.
-
-        Wraps `execute` in a workspace transaction (if the task is paper-scoped)
-        and persists the resulting Report. Returns the report id if one was
-        committed, else None.
-        """
         paper_id = task.get("paper_id")
         try:
             if paper_id:
@@ -97,19 +88,32 @@ class Agent(ABC):
         report.validate()
         return state.insert_report(report.to_dict())
 
-    # ---------- Helpers ---------------------------------------------------
+    # ---------- LLM helpers ----------------------------------------------
+
+    def call_json(self, paper_id: str | None, task: dict[str, Any]) -> dict[str, Any]:
+        """Assemble prompt, call LLM, parse JSON."""
+        prompt = prompt_builder.assemble(self.role, self.persona_name, paper_id, task)
+        data, resp = prompt_builder.call_llm_json(
+            self.role, paper_id, self.persona_name, self.default_model,
+            prompt, max_tokens=self.max_tokens, task=task,
+        )
+        # Persist transcript for traceability.
+        self.write_transcript(paper_id, [
+            {"role": "system", "content": prompt.system},
+            {"role": "user", "content": prompt.user},
+            {"role": "assistant", "content": resp.text},
+        ])
+        return data
+
+    # ---------- Plumbing -------------------------------------------------
 
     def _stuck_report(self, paper_id: str | None, message: str) -> Report:
         return Report(
-            role=self.role,
-            paper_id=paper_id,
-            kind="stuck_no_question",
+            role=self.role, paper_id=paper_id, kind="stuck_no_question",
             severity="yellow",
             summary=f"{self.role} could not complete its task",
-            self_diagnosis=message,
-            confidence="low",
-            what_was_tried="see error",
-            what_blocks_me=message,
+            self_diagnosis=message, confidence="low",
+            what_was_tried="see error", what_blocks_me=message,
         )
 
     def write_transcript(self, paper_id: str | None, payload: list[dict[str, str]]) -> str | None:
@@ -117,9 +121,34 @@ class Agent(ABC):
             return None
         d = CONFIG.papers_dir / paper_id / "transcripts"
         d.mkdir(parents=True, exist_ok=True)
-        ts = state.now().replace(":", "").replace("-", "")
+        ts = state.now().replace(":", "").replace("-", "").replace("Z", "Z")
         path = d / f"{self.role}_{ts}.jsonl"
         with path.open("w") as f:
             for line in payload:
                 f.write(json.dumps(line) + "\n")
         return str(path)
+
+
+# ---------- Common helpers reused across agents --------------------------
+
+def render_main_tex(data: dict[str, Any]) -> str:
+    """Compose `main.tex` from state.json. Sections \\input{} their own files."""
+    title = (data.get("title") or "Untitled").replace("&", "\\&")
+    abstract = (data.get("abstract") or "").strip()
+    section_inputs = "\n".join(
+        f"\\input{{sections/{s['id']}}}" for s in data.get("structure", {}).get("sections", [])
+    )
+    abs_block = f"\\begin{{abstract}}\n{abstract}\n\\end{{abstract}}\n" if abstract else ""
+    return (
+        "\\documentclass{article}\n"
+        "\\usepackage{amsmath,amssymb,amsthm}\n"
+        "\\usepackage{hyperref}\n"
+        f"\\title{{{title}}}\n"
+        "\\author{The Lab}\n"
+        "\\date{\\today}\n"
+        "\\begin{document}\n"
+        "\\maketitle\n"
+        f"{abs_block}"
+        f"{section_inputs}\n"
+        "\\end{document}\n"
+    )

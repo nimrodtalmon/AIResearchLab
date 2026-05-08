@@ -1,0 +1,81 @@
+{% extends "_base.html" %}
+{% block title %}{{ paper.title }} · Paper Factory{% endblock %}
+{% block content %}
+<header class="topbar">
+  <a class="btn" href="{{ url_for('meeting_view') }}">← Lab meeting</a>
+  <h1 style="margin-left:0.5rem">{{ paper.title }}</h1>
+  <span class="stat">{{ paper.status }}</span>
+  {% if paper.paused %}<span class="stat">⏸ paused</span>{% endif %}
+  <span class="stat">${{ '%.2f' % paper.spend_usd }}</span>
+</header>
+
+<div style="display:grid; grid-template-columns: 2fr 1fr; gap:1.5rem">
+  <div>
+    <section class="card">
+      <h2>Abstract</h2>
+      <p>{{ state.abstract or '(not yet drafted)' }}</p>
+      <h3>Formal problem</h3>
+      <pre style="white-space:pre-wrap">{{ state.formal_problem or '(empty)' }}</pre>
+    </section>
+
+    <section class="card">
+      <h2>Structure</h2>
+      {% if not state.structure or not state.structure.sections %}
+        <p style="color:#777">No sections yet.</p>
+      {% else %}
+        <table style="width:100%; border-collapse:collapse">
+          <thead><tr>
+            <th align="left">ID</th><th align="left">Title</th>
+            <th align="left">Status</th><th align="left">Polished</th>
+          </tr></thead>
+          {% for s in state.structure.sections %}
+          <tr>
+            <td><code>{{ s.id }}</code></td>
+            <td>{{ s.title }}</td>
+            <td>{{ s.status }}</td>
+            <td>{{ '✓' if s.polished else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </table>
+      {% endif %}
+      {% if state.structure_approved %}<p style="color:#2f9e44">Structure approved by PI.</p>{% endif %}
+    </section>
+
+    <section class="card">
+      <h2>Workspace files</h2>
+      {% if not files %}<p style="color:#777">Empty.</p>{% endif %}
+      <ul>
+        {% for f in files %}
+          <li><a href="{{ url_for('paper_file', paper_id=paper.id) }}?rel={{ f.rel }}">{{ f.rel }}</a>
+            <span style="color:#777">· {{ f.size }} B</span></li>
+        {% endfor %}
+      </ul>
+    </section>
+  </div>
+
+  <div>
+    <section class="card">
+      <h2>Decisions log</h2>
+      {% if not state.decisions_log %}<p style="color:#777">Nothing yet.</p>{% endif %}
+      {% for d in state.decisions_log|reverse %}
+        <div style="margin-bottom:0.5rem; font-size:0.9rem">
+          <div style="color:#777">{{ d.timestamp }} · {{ d.by }}</div>
+          <div>{{ d.what }}</div>
+        </div>
+      {% endfor %}
+    </section>
+
+    <section class="card">
+      <h2>Reports</h2>
+      {% if not reports %}<p style="color:#777">None.</p>{% endif %}
+      {% for r in reports %}
+        <div class="report-row">
+          <span class="dot {{ r.severity }}"></span>
+          <a href="{{ url_for('report_card', report_id=r.id) }}">{{ r.summary }}</a>
+          <span class="stat">{{ r.status }}</span>
+        </div>
+      {% endfor %}
+    </section>
+  </div>
+</div>
+{% endblock %}

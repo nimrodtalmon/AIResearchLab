@@ -112,15 +112,21 @@ def transaction(
             yield ctx
         except Exception:
             repo.git.reset("--hard", snapshot)
+            repo.git.clean("-fd")
             raise
 
         if not _has_changes(repo):
             return
 
-        _run_gates(workspace)
-        repo.git.add("-A")
-        author = f"{role}[{persona_name}]" if persona_name else role
-        repo.index.commit(f"{author}: agent commit")
+        try:
+            _run_gates(workspace)
+            repo.git.add("-A")
+            author = f"{role}[{persona_name}]" if persona_name else role
+            repo.index.commit(f"{author}: agent commit")
+        except Exception:
+            repo.git.reset("--hard", snapshot)
+            repo.git.clean("-fd")
+            raise
 
         if not CONFIG.stub_github_mirror:
             try:

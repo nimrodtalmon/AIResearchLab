@@ -1,7 +1,6 @@
-"""Dummy agent for P0. Returns a canned decision-needed Report so the
-end-to-end dispatch → queue → render path can be exercised without any LLM.
-
-Spawns one report per paper, then sleeps until the report is resolved.
+"""Dummy agent. P0 used this to exercise the dispatch loop. P1 onward
+the dispatcher routes by paper status, so this only fires if a task is
+explicitly tagged with role='dummy' (e.g. via tests).
 """
 from __future__ import annotations
 
