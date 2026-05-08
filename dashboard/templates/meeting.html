@@ -1,0 +1,52 @@
+{% extends "_base.html" %}
+{% block title %}Lab Meeting · Paper Factory{% endblock %}
+{% block content %}
+<header class="topbar">
+  <h1>Lab Meeting</h1>
+  <span class="stat">{{ view.totals.papers }} project(s)</span>
+  <span class="stat">{{ view.totals.waiting }} waiting</span>
+  <span class="stat">${{ '%.2f' % view.totals.spend_today }} today</span>
+  <span class="grow"></span>
+  <a class="btn" href="{{ url_for('flat_view') }}">Flat view</a>
+</header>
+
+{% include "partials/new_paper_form.html" %}
+{% include "principles_panel.html" %}
+
+{% if not view.projects %}
+  <p>No projects yet. Seed one above or run <span class="kbd">python scripts/new_paper.py</span>.</p>
+{% endif %}
+
+{% for proj in view.projects %}
+<section class="project">
+  <header>
+    <span class="dot {{ 'red' if proj.report_count >= 3 else 'green' }}"></span>
+    <span class="title">{{ proj.paper.title or proj.paper.id }}</span>
+    <span class="stat">{{ proj.paper.status }}</span>
+    {% if proj.paper.paused %}<span class="stat">⏸ paused</span>{% endif %}
+    <span class="count">{{ proj.report_count }} report(s)</span>
+    <span class="grow"></span>
+    <form method="post" action="{{ url_for('toggle_pause', paper_id=proj.paper.id) }}" style="display:inline">
+      <button type="submit">{{ 'Resume' if proj.paper.paused else 'Pause' }}</button>
+    </form>
+  </header>
+  {% if not proj.groups %}
+    <div class="workgroup"><p style="color:#777">No reports waiting on PI.</p></div>
+  {% endif %}
+  {% for group in proj.groups %}
+    <div class="workgroup">
+      <h3>{{ group.work_type }}</h3>
+      {% for r in group.reports %}
+        <div class="report-row">
+          <span class="dot {{ r.severity }}"></span>
+          <span class="who">{{ r.persona_name or r.role }}</span>
+          <span class="summary"><a href="{{ url_for('report_card', report_id=r.id) }}">{{ r.summary }}</a></span>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+</section>
+{% endfor %}
+
+{% include "activity_feed.html" %}
+{% endblock %}

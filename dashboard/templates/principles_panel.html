@@ -1,0 +1,39 @@
+<details class="principles-panel">
+  <summary><strong>Principles</strong> ({{ principles|length }} active, {{ candidates|length }} candidate(s))</summary>
+
+  {% if candidates %}
+    <h3 style="margin-top:0.5rem">Promote?</h3>
+    {% for c in candidates %}
+      <form method="post" action="{{ url_for('decide_candidate', candidate_id=c.id) }}" style="margin-bottom:0.5rem">
+        <input type="text" name="text" value="{{ c.text }}" style="width:100%">
+        <select name="scope">
+          <option value="lab" {% if c.suggested_scope == 'lab' %}selected{% endif %}>lab</option>
+          <option value="role:prover">role:prover</option>
+          <option value="role:critic_theory">role:critic_theory</option>
+          <option value="role:writer">role:writer</option>
+        </select>
+        <button type="submit" name="decision" value="promoted" class="primary">Promote</button>
+        <button type="submit" name="decision" value="dismissed">Dismiss</button>
+      </form>
+    {% endfor %}
+  {% endif %}
+
+  <h3 style="margin-top:0.75rem">Active</h3>
+  {% if not principles %}<p style="color:#777">No principles yet.</p>{% endif %}
+  <ul>
+    {% for p in principles %}
+      <li><span class="kbd">{{ p.scope }}</span> — {{ p.text }}</li>
+    {% endfor %}
+  </ul>
+
+  <form method="post" action="{{ url_for('add_principle') }}" style="margin-top:0.5rem">
+    <input type="text" name="text" placeholder="New principle text">
+    <select name="scope">
+      <option value="lab">lab</option>
+      <option value="role:prover">role:prover</option>
+      <option value="role:critic_theory">role:critic_theory</option>
+      <option value="role:writer">role:writer</option>
+    </select>
+    <button type="submit">Add</button>
+  </form>
+</details>

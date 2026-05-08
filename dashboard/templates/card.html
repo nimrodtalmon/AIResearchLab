@@ -1,0 +1,8 @@
+{% extends "_base.html" %}
+{% block title %}{{ report.summary }} · Paper Factory{% endblock %}
+{% block content %}
+<header class="topbar">
+  <a class="btn" href="{{ url_for('meeting_view') }}">← Lab meeting</a>
+</header>
+{% include "partials/card_body.html" %}
+{% endblock %}

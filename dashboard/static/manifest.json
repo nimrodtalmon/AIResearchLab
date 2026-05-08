@@ -1,0 +1,9 @@
+{
+  "name": "Paper Factory",
+  "short_name": "Lab",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fafafa",
+  "theme_color": "#0a58ca",
+  "icons": []
+}

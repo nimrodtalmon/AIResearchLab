@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+.env
+data/
+backups/
+papers/*/transcripts/
+papers/*/workspace/.git/
+*.db
+*.db-wal
+*.db-shm
+.pytest_cache/

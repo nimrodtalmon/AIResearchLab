@@ -1,0 +1,151 @@
+/* Paper Factory dashboard. P0 styling — functional, not pretty. */
+
+* { box-sizing: border-box; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  margin: 0;
+  padding: 1.5rem;
+  background: #fafafa;
+  color: #222;
+  line-height: 1.45;
+}
+
+a { color: #0a58ca; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+header.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+  border-bottom: 1px solid #ddd;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+header.topbar h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+header.topbar .stat { color: #555; font-size: 0.9rem; }
+header.topbar .grow { flex: 1; }
+
+.project {
+  background: #fff;
+  border: 1px solid #e2e2e2;
+  border-radius: 6px;
+  margin-bottom: 1rem;
+  overflow: hidden;
+}
+.project > header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  background: #f4f4f4;
+  border-bottom: 1px solid #e8e8e8;
+}
+.project > header .title { font-weight: 600; }
+.project > header .count {
+  font-size: 0.8rem; color: #555; padding: 0.1rem 0.5rem;
+  border-radius: 999px; background: #e8e8e8;
+}
+
+.workgroup {
+  padding: 0.5rem 1rem;
+  border-top: 1px dashed #eee;
+}
+.workgroup h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #777;
+}
+
+.report-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #f3f3f3;
+}
+.report-row:last-child { border-bottom: none; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dot.green { background: #2f9e44; }
+.dot.yellow { background: #f59f00; }
+.dot.red { background: #e03131; }
+
+.who { color: #555; font-size: 0.85rem; min-width: 10rem; }
+.summary { flex: 1; }
+
+button, .btn {
+  background: #fff;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+  padding: 0.3rem 0.7rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+button:hover, .btn:hover { background: #f0f0f0; }
+button.primary { background: #0a58ca; color: #fff; border-color: #0a58ca; }
+button.primary:hover { background: #084ba8; }
+button.danger { color: #b91c1c; border-color: #b91c1c; }
+
+.card {
+  background: #fff;
+  border: 1px solid #e2e2e2;
+  border-radius: 6px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+.card h2 { margin-top: 0; }
+.card .question { font-size: 1.05rem; font-weight: 500; margin: 0.5rem 0; }
+.card .options label {
+  display: flex; gap: 0.5rem; padding: 0.3rem 0;
+}
+.card textarea, .card input[type=text] {
+  width: 100%;
+  font: inherit;
+  padding: 0.4rem;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+}
+
+.principles-panel {
+  background: #fffbeb;
+  border: 1px solid #fde68a;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.principles-panel h2 { margin: 0 0 0.5rem; font-size: 1rem; }
+
+details.activity-feed {
+  margin-top: 2rem;
+  background: #fff;
+  border: 1px solid #e2e2e2;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+}
+details.activity-feed summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.new-paper-form {
+  display: grid;
+  gap: 0.4rem;
+  grid-template-columns: 1fr 1fr 0.7fr auto;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+.new-paper-form input { padding: 0.4rem; border: 1px solid #bbb; border-radius: 4px; }
+@media (max-width: 700px) {
+  .new-paper-form { grid-template-columns: 1fr; }
+}
+
+.kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: #eee;
+  padding: 0.05rem 0.35rem;
+  border-radius: 3px;
+  font-size: 0.85em;
+}

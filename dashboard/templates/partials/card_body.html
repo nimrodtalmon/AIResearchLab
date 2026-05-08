@@ -1,0 +1,74 @@
+<div class="card">
+  <h2>
+    <span class="dot {{ report.severity }}"></span>
+    {{ report.payload.persona_name or report.role }}
+    <small style="color:#777">· {{ report.kind }} · paper {{ report.paper_id }}</small>
+  </h2>
+
+  {% if report.payload.decision_question %}
+    <p class="question">{{ report.payload.decision_question }}</p>
+  {% endif %}
+
+  {% if report.payload.artifact %}
+    <details open>
+      <summary>Artifact</summary>
+      <pre style="background:#f4f4f4; padding:0.6rem; border-radius:4px; white-space:pre-wrap">{{ report.payload.artifact }}</pre>
+    </details>
+  {% endif %}
+
+  {% if report.payload.self_diagnosis %}
+    <p style="color:#555"><strong>Self-diagnosis:</strong> {{ report.payload.self_diagnosis }}</p>
+  {% endif %}
+
+  {% if report.kind == "stuck_no_question" %}
+    <p><strong>What was tried:</strong> {{ report.payload.what_was_tried }}</p>
+    <p><strong>What blocks me:</strong> {{ report.payload.what_blocks_me }}</p>
+  {% endif %}
+
+  <form method="post" action="{{ url_for('resolve', report_id=report.id) }}">
+    {% if report.payload.options %}
+      <div class="options">
+        {% for opt in report.payload.options %}
+          <label>
+            <input type="radio" name="option" value="{{ opt.id }}" {% if loop.first %}checked{% endif %}>
+            <strong>{{ opt.label }}</strong>
+            <span style="color:#777">— {{ opt.consequence }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    <p>
+      <label for="remark"><strong>Remark</strong> (optional):</label>
+      <textarea id="remark" name="remark" rows="3" placeholder="Free-text reaction"></textarea>
+    </p>
+    <p>
+      <label>
+        <input type="checkbox" name="save_as_principle"> save as principle
+      </label>
+      <select name="principle_scope">
+        <option value="lab">lab-wide</option>
+        <option value="role">per-role ({{ report.role }})</option>
+        <option value="paper">per-project</option>
+      </select>
+    </p>
+    <p>
+      <label><strong>Outcome rating:</strong></label>
+      <label><input type="radio" name="outcome" value="accept" checked> accept</label>
+      <label><input type="radio" name="outcome" value="rework"> rework</label>
+      <label><input type="radio" name="outcome" value="kill"> kill</label>
+    </p>
+
+    <div style="display:flex; gap:0.5rem; margin-top:0.5rem">
+      <button type="submit" name="action" value="approve" class="primary">Send</button>
+      <button type="submit" name="action" value="defer">Defer</button>
+      <button type="submit" name="action" value="kill" class="danger">Kill</button>
+    </div>
+  </form>
+
+  <p style="margin-top:1rem; color:#777; font-size:0.85em">
+    transcript: {{ report.payload.transcript_ref or '—' }} ·
+    severity: {{ report.severity }} ·
+    confidence: {{ report.payload.confidence }}
+  </p>
+</div>

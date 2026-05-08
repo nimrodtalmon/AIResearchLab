@@ -1,0 +1,24 @@
+{% extends "_base.html" %}
+{% block title %}Flat view · Paper Factory{% endblock %}
+{% block content %}
+<header class="topbar">
+  <h1>Flat view (severity-sorted)</h1>
+  <span class="stat">{{ view.totals.waiting }} waiting</span>
+  <span class="stat">${{ '%.2f' % view.totals.spend_today }} today</span>
+  <span class="grow"></span>
+  <a class="btn" href="{{ url_for('meeting_view') }}">Meeting view</a>
+</header>
+
+{% if not view.reports %}<p>Inbox zero. Nice.</p>{% endif %}
+
+{% for r in view.reports %}
+  <div class="report-row" style="background:#fff; padding:0.5rem 1rem; border-radius:4px; margin-bottom:0.3rem">
+    <span class="dot {{ r.severity }}"></span>
+    <span class="who">{{ r.persona_name or r.role }}</span>
+    <span class="summary"><a href="{{ url_for('report_card', report_id=r.id) }}">{{ r.summary }}</a></span>
+    <span class="stat">{{ r.paper_id }}</span>
+  </div>
+{% endfor %}
+
+{% include "activity_feed.html" %}
+{% endblock %}

@@ -1,0 +1,12 @@
+<details class="activity-feed">
+  <summary>Activity feed (FYI · {{ view.fyi_feed|length }})</summary>
+  {% if not view.fyi_feed %}<p style="color:#777">Nothing here yet.</p>{% endif %}
+  {% for r in view.fyi_feed %}
+    <div class="report-row">
+      <span class="dot {{ r.severity }}"></span>
+      <span class="who">{{ r.persona_name or r.role }}</span>
+      <span class="summary">{{ r.summary }}</span>
+      <span class="stat">{{ r.created_at }}</span>
+    </div>
+  {% endfor %}
+</details>
